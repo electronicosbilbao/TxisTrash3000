@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="TxisTrash3000 · Robot reciclador del equipo Txispas">
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1512"/><stop offset="1" stop-color="#16251E"/>
+    </linearGradient>
+    <linearGradient id="cubo-am" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F2D11B"/><stop offset="1" stop-color="#C9A90E"/></linearGradient>
+    <linearGradient id="cubo-ma" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9723D"/><stop offset="1" stop-color="#7A4F27"/></linearGradient>
+    <linearGradient id="cubo-az" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2AA6EA"/><stop offset="1" stop-color="#1478B3"/></linearGradient>
+  </defs>
+  <rect width="1280" height="400" rx="28" fill="url(#fondo)"/>
+  <g fill="none" stroke="#7BD88F" stroke-width="2" opacity="0.10">
+    <circle cx="1130" cy="60" r="160"/><circle cx="1130" cy="60" r="230"/><circle cx="1130" cy="60" r="300"/>
+  </g>
+  <!-- símbolo de reciclaje -->
+  <g transform="translate(70 92) scale(3.1)" fill="none" stroke="#7BD88F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 19H4.8a1.8 1.8 0 0 1-1.6-2.7L5.4 12.5"/><path d="M11 19h8.2a1.8 1.8 0 0 0 1.6-2.7l-1.2-2"/><path d="m14 16-3 3 3 3"/>
+    <path d="M8.3 13.6 5.4 12.5 4.3 15.4"/><path d="m9.3 7.6 1.2-2a1.8 1.8 0 0 1 3.1 0l4.1 7"/><path d="m14.6 11.6 2.9 1.1 1.1-2.9"/>
+  </g>
+  <text x="170" y="148" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="78" font-weight="800" fill="#EEF3EF" letter-spacing="-1.5">TxisTrash<tspan fill="#7BD88F">3000</tspan></text>
+  <text x="172" y="198" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="32" font-weight="600" fill="#9DB0A6">Robot reciclador · Equipo Txispas</text>
+  <text x="172" y="236" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="22" fill="#9DB0A6">Robotekin Hackathon LeRobot 2026 · Vitoria-Gasteiz</text>
+  <!-- tres contenedores -->
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-weight="700" font-size="20" text-anchor="middle">
+    <g transform="translate(170 270)">
+      <rect x="0" y="0" width="150" height="14" rx="7" fill="#F2D11B"/>
+      <path d="M8 22 H142 L130 100 H20 Z" fill="url(#cubo-am)"/>
+      <text x="75" y="70" fill="#2B2405">Envases</text>
+    </g>
+    <g transform="translate(350 270)">
+      <rect x="0" y="0" width="150" height="14" rx="7" fill="#A9723D"/>
+      <path d="M8 22 H142 L130 100 H20 Z" fill="url(#cubo-ma)"/>
+      <text x="75" y="70" fill="#FFF3E6">Orgánico</text>
+    </g>
+    <g transform="translate(530 270)">
+      <rect x="0" y="0" width="150" height="14" rx="7" fill="#2AA6EA"/>
+      <path d="M8 22 H142 L130 100 H20 Z" fill="url(#cubo-az)"/>
+      <text x="75" y="70" fill="#F0F9FF">Papel</text>
+    </g>
+  </g>
+  <!-- brazo esquemático -->
+  <g transform="translate(900 120)" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="120" y="215" width="130" height="34" rx="10" fill="#E8892A"/>
+    <path d="M185 220 L150 120 L60 70" fill="none" stroke="#E8892A" stroke-width="30"/>
+    <circle cx="150" cy="120" r="20" fill="#151515"/><circle cx="185" cy="220" r="18" fill="#151515"/>
+    <path d="M60 70 L30 52 M60 70 L42 98" fill="none" stroke="#E8892A" stroke-width="14"/>
+    <circle cx="22" cy="80" r="22" fill="#F39A1C"/><path d="M22 58 v-8" stroke="#4A7A2A" stroke-width="5"/>
+  </g>
+</svg>

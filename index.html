@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TxisTrash3000 Robot Reciclador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: pantalla de proyector. Izquierda = escena (qué hay en la zona + los tres contenedores); derecha = panel (enseñar) o solo la cámara (modo contador). */
+:root {
+  --bg: #0E1512;          /* fondo verde casi negro, se ve bien en proyector */
+  --panel: #16211C;
+  --line: #2A3A32;
+  --fg: #EEF3EF;
+  --muted: #9DB0A6;
+  --accent: #7BD88F;      /* verde reciclaje, solo para estados "activo" */
+  --warn: #F2B84B;
+  --organico: #9A6634;
+  --papel: #1E9BE0;
+  --envases: #F2D11B;
+  --font-display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.45 var(--font-body);
+  padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 16px;
+}
+button, select { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 14px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.marcado { border: 2px solid color-mix(in srgb, var(--fg) 55%, transparent); font-weight: 700; }
+button.marcado:hover { border-color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, var(--panel)); }
+button.con-icono { display: inline-flex; align-items: center; gap: 8px; }
+button.con-icono svg { width: 18px; height: 18px; flex: none; }
+button.engranaje { padding: 4px; width: 44px; height: 40px; display: inline-grid; place-items: center; }
+button.engranaje svg { width: 32px; height: 32px; transition: transform .6s ease; filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
+button.engranaje:hover svg { transform: rotate(60deg); }
+button.principal { background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.brand { font: 800 1.6rem/1 var(--font-display); letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+.brand svg { width: 30px; height: 30px; }
+.brand .sub { font-weight: 600; color: var(--muted); margin-left: 6px; }
+.spacer { flex: 1; }
+.pill { font-size: 0.85rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); display: inline-flex; align-items: center; gap: 8px; }
+.pill::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+
+/* Modos: enseñar (panel completo) / contador (solo escena + cámara opcional) */
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; }
+body:not(.contador) .solo-contador { display: none !important; }
+body.contador .solo-ensenar { display: none !important; }
+body.contador main { grid-template-columns: minmax(0, 1fr) 340px; }
+body.contador aside { gap: 18px; }
+#huecoResumen { flex: 1; min-height: 0; }
+aside .resumen { flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; }
+aside .resumen .total { font-size: 1.6rem; }
+aside .historial { flex-direction: column; flex-wrap: nowrap; overflow-y: auto; }
+aside .historial li { border-radius: 12px; font-size: 1.05rem; padding: 10px 14px; display: flex; gap: 10px; align-items: center; }
+aside .historial li b { flex: 1; }
+aside .historial li:first-child { border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--fg); }
+
+.escena { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* Qué hay en la zona de recogida */
+.zona {
+  --c: var(--line);
+  flex: 3 1 auto;
+  border: 2px solid var(--c); border-radius: 22px;
+  background: color-mix(in srgb, var(--c) 12%, var(--bg));
+  padding: 22px 28px; display: flex; flex-direction: column; justify-content: center; gap: 18px;
+  transition: border-color .25s, background-color .25s;
+}
+.zona .etiqueta { font-size: 0.8rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.zona .mensaje { font: 800 clamp(2rem, 4.8vw, 3.8rem)/1.05 var(--font-display); letter-spacing: -0.02em; text-wrap: balance; }
+.zona .submensaje { font-size: clamp(1rem, 1.8vw, 1.4rem); color: var(--muted); margin-top: -8px; }
+.fichas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ficha {
+  --c: var(--line);
+  border: 2px solid var(--line); border-radius: 16px; padding: 14px 16px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; align-items: center;
+  opacity: 0.35; transition: opacity .25s, border-color .25s, background-color .25s;
+}
+.ficha .ico { grid-row: span 2; font-size: clamp(2.4rem, 4.5vw, 3.6rem); line-height: 1; }
+.ficha .nom { font: 800 clamp(1.2rem, 2.2vw, 1.8rem)/1.1 var(--font-display); }
+.ficha .dst { font-size: 0.95rem; color: var(--muted); }
+.ficha.esta { opacity: 1; border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--bg)); }
+.ficha.esta .dst { color: var(--fg); }
+.ficha.viendo { opacity: 0.7; border-style: dashed; border-color: var(--c); }
+
+
+/* Los tres contenedores */
+.contenedores { flex: 2 1 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.cubo {
+  --c: var(--line);
+  border-radius: 14px 14px 26px 26px; border: 2px solid var(--c);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 22%, var(--bg)), color-mix(in srgb, var(--c) 8%, var(--bg)));
+  padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 2px;
+  transition: transform .25s, box-shadow .25s;
+}
+.cubo .tapa { height: 8px; border-radius: 6px; background: var(--c); margin: -6px -6px 10px; }
+.cubo .tipo { font: 600 1.05rem/1.2 var(--font-display); }
+.cubo .que { font-size: 0.9rem; color: var(--muted); }
+.cubo .cuenta { font: 800 clamp(3rem, 7vw, 6rem)/1 var(--font-display); font-variant-numeric: tabular-nums; margin-top: auto; padding-top: 8px; }
+.cubo.activo { transform: translateY(-6px); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 45%, transparent), 0 14px 40px -10px var(--c); }
+.cubo.pop .cuenta { animation: pop .6s ease; }
+@keyframes pop { 30% { transform: scale(1.35); } }
+
+.resumen { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+.resumen .total { font: 800 1.4rem var(--font-display); font-variant-numeric: tabular-nums; }
+.historial { display: flex; gap: 8px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+.historial li { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px 4px 8px; font-size: 0.9rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.historial li b { color: var(--fg); font-weight: 700; }
+.historial li.vacio { border: 0; padding-left: 0; }
+
+/* Panel lateral */
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-width: 0; }
+aside h2 { font: 600 1rem/1.2 var(--font-display); margin: 0; }
+aside section { display: flex; flex-direction: column; gap: 10px; }
+aside p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.camara { position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; max-width: 100%; }
+.camara canvas { width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+body.contador .camara canvas { cursor: default; }
+.camara .aviso { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; color: var(--muted); font-size: 0.9rem; }
+select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.ensenar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ensenar button { position: relative; overflow: hidden; text-align: left; display: flex; flex-direction: column; gap: 0; padding: 10px 12px; }
+.ensenar button .n { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ensenar button .barra { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: var(--accent); }
+.ensenar button.hecho { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.ensenar button.error .n { color: #FF9C8A; }
+.medidor { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 3.2em; gap: 6px 8px; align-items: center; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.medidor .pista { height: 8px; border-radius: 4px; background: var(--bg); position: relative; overflow: hidden; }
+.medidor .relleno { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--muted); border-radius: 4px; }
+.medidor .relleno.si { background: var(--accent); }
+.medidor .marca { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--warn); }
+.fila { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fila button { flex: 1; }
+.fila input[type=range] { flex: 1; accent-color: var(--accent); }
+button.peligro { color: #FF9C8A; }
+label.check { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; }
+.pasos { margin: 0; padding-left: 20px; color: var(--muted); font-size: 0.88rem; display: flex; flex-direction: column; gap: 4px; }
+.leyenda { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+@media (max-width: 900px) {
+  main, body.contador main { grid-template-columns: minmax(0, 1fr); }
+  .contenedores, .fichas { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--accent)">
+      <path d="M7 19H4.8a1.8 1.8 0 0 1-1.6-2.7L5.4 12.5"/><path d="M11 19h8.2a1.8 1.8 0 0 0 1.6-2.7l-1.2-2"/><path d="m14 16-3 3 3 3"/>
+      <path d="M8.3 13.6 5.4 12.5 4.3 15.4"/><path d="m9.3 7.6 1.2-2a1.8 1.8 0 0 1 3.1 0l4.1 7"/><path d="m14.6 11.6 2.9 1.1 1.1-2.9"/>
+    </svg>
+    <span>TxisTrash3000 <span class="sub">Robot Reciclador</span></span>
+  </div>
+  <span id="estado" class="pill">Sin cámara</span>
+  <span class="spacer"></span>
+  <button id="btnCamaraTop" type="button" class="solo-contador principal">Activar cámara</button>
+  <button id="btnPantalla" type="button" class="marcado con-icono"></button>
+  <button id="btnContador" type="button" class="solo-ensenar principal" disabled>Terminar de enseñar →</button>
+  <button id="btnEnsenar" type="button" class="solo-contador marcado engranaje" aria-label="Ajustes: enseñar de nuevo a la cámara" title="Ajustes (enseñar de nuevo)">
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#F4F6F7"/><stop offset=".45" stop-color="#B9C0C5"/><stop offset=".55" stop-color="#9CA4AA"/><stop offset="1" stop-color="#6B7378"/>
+        </linearGradient>
+        <linearGradient id="metalHueco" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4C5357"/><stop offset="1" stop-color="#9AA2A7"/>
+        </linearGradient>
+      </defs>
+      <path d="M40.19 20.81 L44.85 21.50 L44.85 26.50 L40.19 27.19 L38.97 30.93 L42.34 34.23 L39.40 38.28 L35.22 36.10 L32.04 38.41 L32.82 43.06 L28.06 44.60 L25.97 40.38 L22.03 40.38 L19.94 44.60 L15.18 43.06 L15.96 38.41 L12.78 36.10 L8.60 38.28 L5.66 34.23 L9.03 30.93 L7.81 27.19 L3.15 26.50 L3.15 21.50 L7.81 20.81 L9.03 17.07 L5.66 13.77 L8.60 9.72 L12.78 11.90 L15.96 9.59 L15.18 4.94 L19.94 3.40 L22.03 7.62 L25.97 7.62 L28.06 3.40 L32.82 4.94 L32.04 9.59 L35.22 11.90 L39.40 9.72 L42.34 13.77 L38.97 17.07 Z" fill="url(#metal)" stroke="#4E555A" stroke-width="1.2" stroke-linejoin="round"/>
+      <circle cx="24" cy="24" r="11.5" fill="none" stroke="#7A8287" stroke-width="1.4"/>
+      <circle cx="24" cy="24" r="6.2" fill="url(#metalHueco)" stroke="#3E4448" stroke-width="1.2"/>
+    </svg>
+  </button>
+</header>
+
+<main>
+  <div class="escena">
+    <div id="zona" class="zona" aria-live="polite">
+      <div class="etiqueta solo-ensenar">Zona de recogida</div>
+      <div class="mensaje" id="mensaje">Conecta la cámara</div>
+      <div class="submensaje" id="submensaje">Pulsa «Activar cámara» en el panel de la derecha</div>
+      <div class="fichas" id="fichas"></div>
+    </div>
+
+    <div class="contenedores" id="contenedores"></div>
+
+    <div class="resumen">
+      <span class="total" id="total">0 residuos reciclados</span>
+      <ul class="historial" id="historial"></ul>
+    </div>
+  </div>
+
+  <aside>
+    <section>
+      <h2 class="solo-ensenar">1 · Cámara</h2>
+      <h2 class="solo-contador">Cámara</h2>
+      <div class="camara">
+        <canvas id="vista" width="640" height="480" aria-label="Imagen de la cámara con la zona de recogida marcada"></canvas>
+        <div class="aviso" id="avisoCamara">La cámara está apagada</div>
+      </div>
+      <div class="leyenda solo-ensenar"><span><i style="background:#7BD88F"></i>objeto</span><span><i style="background:#FF6B57"></i>brazo</span></div>
+      <div class="fila">
+        <button id="btnCamara" type="button">Activar cámara</button>
+      </div>
+      <div class="fila solo-contador">
+        <button id="btnCero" type="button" class="marcado">Poner contadores a cero</button>
+      </div>
+      <select id="selCamara" aria-label="Elegir cámara" class="solo-ensenar" hidden></select>
+      <p class="solo-ensenar">Dibuja sobre la imagen, a mano alzada, el contorno de la zona donde dejáis los objetos: mantén pulsado y rodéala. Al soltar se cierra sola. Deja fuera la posición de reposo del brazo y los contenedores.</p>
+    </section>
+
+    <section class="solo-contador" id="huecoResumen">
+      <h2>Últimos reciclados</h2>
+    </section>
+
+    <section class="solo-ensenar">
+      <h2>2 · Enseñar a la cámara</h2>
+      <ol class="pasos">
+        <li>Deja la mesa sin objetos, el brazo en reposo y que nadie salga en la imagen. Pulsa <b>Zona vacía</b>.</li>
+        <li>Pon <b>un solo objeto</b> en la zona, sin tocar el borde de la zona, y pulsa su botón. Repite con los otros dos.</li>
+        <li>Enseña cada objeto <b>2 o 3 veces</b>, en sitios distintos de la zona y girándolo un poco. Sobre todo la mandarina.</li>
+        <li>Mete el <b>brazo</b> en la zona, quieto, como si fuera a coger algo, y pulsa <b>Brazo</b>. Hazlo en 2 o 3 posturas.</li>
+      </ol>
+      <div class="ensenar" id="ensenar"></div>
+    </section>
+
+    <section class="solo-ensenar">
+      <h2>3 · Lo que detecta ahora</h2>
+      <div class="medidor" id="medidor"></div>
+      <p>La raya amarilla es el mínimo para dar un objeto por presente. Si un objeto no llega, bájala; si aparecen objetos fantasma, súbela.</p>
+      <div class="fila">
+        <label for="rngUmbral" style="font-size:.88rem">Sensibilidad</label>
+        <input type="range" id="rngUmbral" min="0.15" max="0.8" step="0.05">
+      </div>
+    </section>
+
+    <section class="solo-ensenar">
+      <h2>4 · Ajustes</h2>
+      <label class="check"><input type="checkbox" id="chkSonido" checked> Sonido al reciclar</label>
+      <label for="selContar" style="font-size:.88rem">En modo contador, contar los objetos que salen de…</label>
+      <select id="selContar">
+        <option value="zona">la zona de recogida (recomendado)</option>
+        <option value="todo">toda la imagen</option>
+      </select>
+      <p>Contad con toda la imagen solo si la cámara no ve el interior de los contenedores: un objeto que sigue a la vista dentro de un contenedor nunca «sale».</p>
+      <div class="fila">
+        <button id="btnCero2" type="button">Poner contadores a cero</button>
+      </div>
+      <div class="fila">
+        <button id="btnOlvidar" type="button" class="peligro">Olvidar lo aprendido</button>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------
+// Configuración: objetos y contenedores (cambiad nombres o colores aquí)
+// ---------------------------------------------------------------
+const CONTENEDORES = [
+  { id: "envases",  tipo: "Contenedor amarillo", que: "Envases",        color: "var(--envases)" },
+  { id: "organico", tipo: "Contenedor marrón",   que: "Orgánico",       color: "var(--organico)" },
+  { id: "papel",    tipo: "Contenedor azul",     que: "Papel y cartón", color: "var(--papel)" },
+];
+const OBJETOS = {
+  mandarina: { nombre: "Mandarina", icono: "🍊", contenedor: "organico", reciclado: "¡Mandarina reciclada!" },
+  papel:     { nombre: "Papel",     icono: "📄", contenedor: "papel",    reciclado: "¡Papel reciclado!" },
+  brick:     { nombre: "Brick",     icono: "🧃", contenedor: "envases",  reciclado: "¡Brick reciclado!" },
+};
+const IDS = Object.keys(OBJETOS);
+const APRENDIBLES = [...IDS, "brazo"];
+
+const FPS = 10;                   // análisis por segundo
+const AW = 240, AH = 180;         // resolución de análisis
+const FOTOS_POR_CLIC = 20;        // fotogramas que mira cada botón de enseñar (2 s)
+const DIFERENCIA_FONDO = 45;      // cuánto tiene que diferir un píxel de la imagen vacía para ser "algo"
+const CAMBIO_COLOR_MIN = 0.045;   // por debajo, el píxel solo ha cambiado de brillo (sombra, luz): se ignora
+const PIXEL_CAMBIA = 30;          // cuánto tiene que cambiar un píxel entre fotogramas para contar como movimiento
+const MOVIMIENTO_MAX = 0.02;      // con más de un 2 % de la zona cambiando, algo se mueve
+const FOTOGRAMAS_APARECE = 15;    // 1,5 s de imagen quieta viendo un objeto para darlo por presente
+const FOTOGRAMAS_SALE = 12;       // 1,2 s de imagen quieta sin verlo para darlo por reciclado
+const SEGUNDOS_AVISO = 3;         // cuánto dura el aviso "¡Mandarina reciclada!"
+const CLAVE = "robot-reciclador-v5";
+const NCAJONES_GUARDADOS = 28;
+const CLAVE_ANTERIOR = "robot-reciclador-v4";
+
+// ---------------------------------------------------------------
+// Estado (se guarda en el navegador para no perderlo al recargar)
+// ---------------------------------------------------------------
+function estadoNuevo() {
+  return {
+    vacia: null,                // imagen completa vacía: { w, h, rgb (base64) }
+    perfiles: {},               // por clase: { area, mezcla: [28], principales: [...], veces }
+    zona: { puntos: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]] },   // contorno a mano alzada (0..1)
+    historial: [],
+    sonido: true,
+    umbral: 0.4,
+    contador: false,            // modo contador (sin panel de enseñar)
+    contarEn: "zona",           // en modo contador: "zona" o "todo"
+  };
+}
+function cargar(clave) {
+  try { return JSON.parse(localStorage.getItem(clave)); } catch { return null; }
+}
+let estado = cargar(CLAVE);
+if (!estado) {
+  // Versión anterior: se conservan zona vacía, recuadro, contadores y ajustes; los objetos y el brazo hay que volver a enseñarlos
+  const v = cargar(CLAVE_ANTERIOR);
+  estado = v ? { ...v, perfiles: {} } : {};
+}
+estado = Object.assign(estadoNuevo(), estado);
+// Zona rectangular de versiones anteriores -> contorno de 4 esquinas
+if (estado.zona && !estado.zona.puntos) {
+  const z = estado.zona;
+  estado.zona = { puntos: [[z.x, z.y], [z.x + z.w, z.y], [z.x + z.w, z.y + z.h], [z.x, z.y + z.h]] };
+}
+for (const k of Object.keys(estado.perfiles)) if (estado.perfiles[k]?.mezcla?.length !== NCAJONES_GUARDADOS) delete estado.perfiles[k];
+
+let guardarPendiente = null;
+function guardar() {
+  clearTimeout(guardarPendiente);
+  guardarPendiente = setTimeout(() => {
+    try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch { /* sin almacenamiento: seguimos igual */ }
+  }, 300);
+}
+
+// Imagen vacía en binario (para no ocupar demasiado al guardarla)
+function aBase64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function deBase64(b64) {
+  const s = atob(b64), out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+let vaciaRGB = null;
+try {
+  if (estado.vacia && estado.vacia.w === AW && estado.vacia.h === AH) vaciaRGB = deBase64(estado.vacia.rgb);
+  else estado.vacia = null;
+} catch { estado.vacia = null; }
+
+// ---------------------------------------------------------------
+// Pintar la escena
+// ---------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const contenedorDe = obj => CONTENEDORES.find(c => c.id === OBJETOS[obj].contenedor);
+
+$("contenedores").innerHTML = CONTENEDORES.map(c => {
+  const objetos = IDS.filter(o => OBJETOS[o].contenedor === c.id).map(o => OBJETOS[o].icono + " " + OBJETOS[o].nombre).join(", ");
+  return `<div class="cubo" id="cubo-${c.id}" style="--c:${c.color}">
+    <div class="tapa"></div>
+    <div class="tipo">${c.tipo}</div>
+    <div class="que">${c.que} · ${objetos}</div>
+    <div class="cuenta" id="cuenta-${c.id}">0</div>
+  </div>`;
+}).join("");
+
+$("fichas").innerHTML = IDS.map(o => {
+  const c = contenedorDe(o);
+  return `<div class="ficha" id="ficha-${o}" style="--c:${c.color}">
+    <div class="ico">${OBJETOS[o].icono}</div>
+    <div class="nom">${OBJETOS[o].nombre}</div>
+    <div class="dst">→ ${c.tipo.toLowerCase()}</div>
+  </div>`;
+}).join("");
+
+const BOTONES = [["vacia", "⬜", "Zona vacía"], ...IDS.map(o => [o, OBJETOS[o].icono, OBJETOS[o].nombre]), ["brazo", "🦾", "Brazo"]];
+$("ensenar").innerHTML = BOTONES.map(([k, ico, nom]) =>
+  `<button type="button" data-clase="${k}"><span>${ico} ${nom}</span><span class="n" id="n-${k}"></span><span class="barra"></span></button>`
+).join("");
+
+$("medidor").innerHTML = IDS.map(o =>
+  `<span>${OBJETOS[o].icono} ${OBJETOS[o].nombre}</span><span class="pista"><span class="relleno" id="rel-${o}"></span><span class="marca" id="marca-${o}"></span></span><span id="val-${o}">–</span>`
+).join("") +
+  `<span>🦾 Brazo</span><span class="pista"><span class="relleno" id="rel-brazo"></span></span><span id="val-brazo">–</span>` +
+  `<span>↔ Movimiento</span><span class="pista"><span class="relleno" id="rel-mov"></span><span class="marca" id="marca-mov"></span></span><span id="val-mov">–</span>`;
+
+function pintarContadores(nuevo) {
+  for (const c of CONTENEDORES) {
+    $("cuenta-" + c.id).textContent = estado.historial.filter(h => OBJETOS[h.objeto]?.contenedor === c.id).length;
+  }
+  const total = estado.historial.length;
+  $("total").textContent = total === 1 ? "1 residuo reciclado" : `${total} residuos reciclados`;
+  const ultimos = estado.historial.slice(-10).reverse();
+  $("historial").innerHTML = ultimos.length
+    ? ultimos.map(h => `<li>${OBJETOS[h.objeto].icono} <b>${OBJETOS[h.objeto].nombre}</b> ${h.hora}</li>`).join("")
+    : `<li class="vacio">Todavía no se ha reciclado nada</li>`;
+  if (nuevo) {
+    const cubo = $("cubo-" + OBJETOS[nuevo].contenedor);
+    cubo.classList.remove("pop"); void cubo.offsetWidth; cubo.classList.add("pop");
+  }
+}
+
+function pintarAprendido() {
+  const btnVacia = document.querySelector('[data-clase="vacia"]');
+  btnVacia.classList.toggle("hecho", !!estado.vacia);
+  btnVacia.classList.remove("error");
+  $("n-vacia").textContent = estado.vacia ? "aprendida" : "sin enseñar";
+  for (const k of APRENDIBLES) {
+    const p = estado.perfiles[k];
+    const b = document.querySelector(`[data-clase="${k}"]`);
+    b.classList.remove("error");
+    $("n-" + k).textContent = p ? `aprendido (${p.veces} ${p.veces === 1 ? "vez" : "veces"})`
+      : (estado.vacia ? "sin enseñar" : "enseña antes la zona vacía");
+    b.classList.toggle("hecho", !!p);
+  }
+  for (const o of IDS) $("marca-" + o).style.left = (estado.umbral * 100 / 1.5) + "%";
+  $("marca-mov").style.left = (MOVIMIENTO_MAX * 100 / 0.1) + "%";
+  $("rngUmbral").value = estado.umbral;
+  $("selContar").value = estado.contarEn;
+  $("btnContador").disabled = !listo();
+}
+
+function listo() {
+  return !!vaciaRGB && IDS.some(o => estado.perfiles[o]);
+}
+
+let aviso = null;   // { objeto, hasta }
+
+function pintarZona(info) {
+  const caja = $("zona");
+  let mensaje, sub = "", color = "var(--line)";
+  if (!camaraActiva) {
+    mensaje = "Conecta la cámara";
+    sub = estado.contador ? "Pulsa «Activar cámara»" : "Pulsa «Activar cámara» en el panel de la derecha";
+  } else if (!listo()) {
+    mensaje = "Enséñame los objetos";
+    sub = estado.contador ? "Pulsa «Enseñar de nuevo» y enseña la zona vacía" : "Usa los botones de «Enseñar a la cámara»";
+  } else if (aviso && Date.now() < aviso.hasta) {
+    const c = contenedorDe(aviso.objeto);
+    color = c.color;
+    mensaje = `${OBJETOS[aviso.objeto].icono} ${OBJETOS[aviso.objeto].reciclado}`;
+    sub = `Directo al ${c.tipo.toLowerCase()} · ${c.que.toLowerCase()}`;
+  } else if (info?.bloqueado) {
+    mensaje = "🦾 El robot está trabajando…"; sub = "Llevando cada residuo a su contenedor";
+  } else {
+    const hay = IDS.filter(o => confirmados[o]).length;
+    if (!hay) { mensaje = "Esperando residuos…"; sub = "Deja uno o varios objetos en la zona de recogida"; }
+    else if (hay === 1) { mensaje = "Hay 1 residuo por reciclar"; sub = "El robot lo llevará a su contenedor"; }
+    else { mensaje = `Hay ${hay} residuos por reciclar`; sub = "El robot los llevará uno a uno a su contenedor"; }
+  }
+  caja.style.setProperty("--c", color);
+  $("mensaje").textContent = mensaje;
+  $("submensaje").textContent = sub;
+  for (const o of IDS) {
+    const f = $("ficha-" + o);
+    f.classList.toggle("esta", !!confirmados[o]);
+    f.classList.toggle("viendo", !confirmados[o] && !!info?.presente?.[o] && !info?.bloqueado);
+  }
+  for (const c of CONTENEDORES) {
+    const activo = aviso && Date.now() < aviso.hasta && OBJETOS[aviso.objeto].contenedor === c.id;
+    $("cubo-" + c.id).classList.toggle("activo", !!activo);
+  }
+}
+
+function pintarMedidor(info) {
+  for (const o of IDS) {
+    const v = info?.puntos?.[o];
+    $("rel-" + o).style.width = v == null ? "0" : Math.min(100, v * 100 / 1.5) + "%";
+    $("rel-" + o).classList.toggle("si", !!info?.presente?.[o]);
+    $("val-" + o).textContent = v == null ? "–" : Math.round(v * 100) + " %";
+  }
+  const br = info?.brazo;
+  $("rel-brazo").style.width = br ? "100%" : "0";
+  $("rel-brazo").classList.toggle("si", !!br);
+  $("val-brazo").textContent = br == null ? "–" : (br ? "sí" : "no");
+  const m = info?.movimiento;
+  $("rel-mov").style.width = m == null ? "0" : Math.min(100, m * 100 / 0.1) + "%";
+  $("val-mov").textContent = m == null ? "–" : (m * 100).toFixed(1) + " %";
+}
+
+function pintarEstado() {
+  const p = $("estado");
+  if (!camaraActiva) { p.className = "pill"; p.textContent = "Sin cámara"; }
+  else if (!listo()) { p.className = "pill warn"; p.textContent = estado.vacia ? "Falta enseñar objetos" : "Falta enseñar la zona vacía"; }
+  else { p.className = "pill ok"; p.textContent = "Detectando"; }
+}
+
+function pintarModo() {
+  document.body.classList.toggle("contador", !!estado.contador);
+  $("btnCamara").hidden = estado.contador && camaraActiva;
+  $("btnCamaraTop").hidden = camaraActiva;
+  // En modo contador con cámara, el total y los últimos reciclados van debajo de la cámara
+  const resumen = document.querySelector(".resumen");
+  const destino = estado.contador ? $("huecoResumen") : document.querySelector(".escena");
+  if (resumen.parentElement !== destino) destino.appendChild(resumen);
+}
+
+// ---------------------------------------------------------------
+// Cámara
+// ---------------------------------------------------------------
+const video = document.createElement("video");
+video.muted = true; video.playsInline = true;
+let camaraActiva = false, flujo = null;
+
+async function activarCamara(deviceId) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $("avisoCamara").textContent = "Este navegador no deja usar la cámara. Abre el archivo con Google Chrome o Microsoft Edge.";
+    return;
+  }
+  try {
+    if (flujo) flujo.getTracks().forEach(t => t.stop());
+    flujo = await navigator.mediaDevices.getUserMedia({
+      // Sin cámara elegida: la trasera si existe (iPad, móvil); en un portátil, su webcam
+      video: deviceId ? { deviceId: { exact: deviceId }, width: 640, height: 480 } : { facingMode: { ideal: "environment" }, width: 640, height: 480 },
+      audio: false,
+    });
+    video.srcObject = flujo;
+    await video.play();
+    camaraActiva = true;
+    $("avisoCamara").hidden = true;
+    $("btnCamara").textContent = "Reiniciar cámara";
+    const id = flujo.getVideoTracks()[0]?.getSettings().deviceId;
+    if (id) { estado.camaraId = id; guardar(); }
+    await listarCamaras(id);
+  } catch (e) {
+    // La cámara guardada ya no está (otro puerto USB, otro equipo): probar con la de por defecto
+    if (deviceId && (e.name === "OverconstrainedError" || e.name === "NotFoundError")) return activarCamara();
+    camaraActiva = false;
+    $("avisoCamara").hidden = false;
+    $("avisoCamara").textContent =
+      e.name === "NotAllowedError" ? "Has bloqueado la cámara. Pulsa el icono de la cámara en la barra de direcciones y permite el acceso."
+      : e.name === "NotFoundError" || e.name === "OverconstrainedError" ? "No encuentro la cámara. Comprueba que está enchufada y pulsa «Activar cámara»."
+      : e.name === "NotReadableError" ? "Otra aplicación está usando esta cámara (¿SenseCraft?). Elige otra cámara o activa en Windows que varias aplicaciones puedan usarla."
+      : "No he podido abrir la cámara: " + e.message;
+  }
+  pintarEstado(); pintarZona(); pintarModo();
+}
+
+async function listarCamaras(actual) {
+  const sel = $("selCamara");
+  const camaras = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  sel.innerHTML = camaras.map((c, i) => `<option value="${c.deviceId}">${c.label || "Cámara " + (i + 1)}</option>`).join("");
+  if (actual) sel.value = actual;
+  sel.hidden = camaras.length < 2;
+}
+
+$("btnCamara").addEventListener("click", () => activarCamara($("selCamara").value || estado.camaraId || undefined));
+$("btnCamaraTop").addEventListener("click", () => activarCamara(estado.camaraId || undefined));
+$("selCamara").addEventListener("change", e => activarCamara(e.target.value));
+
+// ---------------------------------------------------------------
+// Ver
+// ---------------------------------------------------------------
+const analisis = document.createElement("canvas");
+analisis.width = AW; analisis.height = AH;
+const actx = analisis.getContext("2d", { willReadFrequently: true });
+const NCAJONES = 28;
+const IMAGEN = { x: 0, y: 0, w: AW, h: AH, mascara: null, borde: null, n: AW * AH };
+
+// 28 cajones de color: negro, 3 grises (oscuro, claro, blanco) y 24 tonos de 15°
+function cajonDe(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), v = max, s = max ? (max - min) / max : 0;
+  if (v < 0.22) return 0;
+  if (s < 0.22) return v < 0.55 ? 1 : v < 0.8 ? 2 : 3;
+  const d = max - min;
+  let tono;
+  if (max === r) tono = ((g - b) / d + 6) % 6;
+  else if (max === g) tono = (b - r) / d + 2;
+  else tono = (r - g) / d + 4;
+  return 4 + Math.min(23, Math.floor(tono * 4));
+}
+
+// Tonos vecinos: si la luz cambia un poco el color, el objeto sigue contando (el naranja vive justo en una frontera)
+function conVecinos(cajones) {
+  const s = new Set(cajones);
+  for (const k of cajones) {
+    if (k >= 4) { s.add(4 + (k - 4 + 1) % 24); s.add(4 + (k - 4 + 23) % 24); }
+    else s.add({ 0: 1, 1: 0, 2: 3, 3: 2 }[k]);   // negro ↔ gris oscuro, gris claro ↔ blanco (la cámara aclara u oscurece)
+  }
+  return s;
+}
+// Mezcla suavizada para comparar colores sin que un tono de diferencia lo cambie todo
+function suavizar(m) {
+  const out = m.slice();
+  for (let k = 4; k < NCAJONES; k++) {
+    const a = 4 + (k - 4 + 23) % 24, b = 4 + (k - 4 + 1) % 24;
+    out[k] = 0.5 * m[k] + 0.25 * m[a] + 0.25 * m[b];
+  }
+  return out;
+}
+
+const lienzoMascara = document.createElement("canvas");
+lienzoMascara.width = AW; lienzoMascara.height = AH;
+let regionCache = null, regionClave = "";
+function regionZona() {
+  const clave = JSON.stringify(estado.zona.puntos);
+  if (regionCache && clave === regionClave) return regionCache;
+  // Pintar el contorno relleno y ver qué píxeles quedan dentro
+  const c = lienzoMascara.getContext("2d", { willReadFrequently: true });
+  c.clearRect(0, 0, AW, AH);
+  c.fillStyle = "#fff"; c.beginPath();
+  estado.zona.puntos.forEach(([px, py], i) => i ? c.lineTo(px * AW, py * AH) : c.moveTo(px * AW, py * AH));
+  c.closePath(); c.fill();
+  const d = c.getImageData(0, 0, AW, AH).data;
+  let x0 = AW, y0 = AH, x1 = -1, y1 = -1;
+  for (let y = 0; y < AH; y++) for (let x = 0; x < AW; x++) if (d[(y * AW + x) * 4 + 3] > 127) {
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x1 - x0 < 8 || y1 - y0 < 8) { x0 = 0; y0 = 0; x1 = AW - 1; y1 = AH - 1; }   // contorno inválido: toda la imagen
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const mascara = new Uint8Array(w * h), borde = new Uint8Array(w * h);
+  let n = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[((y0 + y) * AW + x0 + x) * 4 + 3] > 127) { mascara[y * w + x] = 1; n++; }
+  if (!n) { mascara.fill(1); n = w * h; }
+  const dentro = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mascara[y * w + x];
+  // Borde del contorno: píxeles de dentro con algún vecino fuera (por ahí entra el brazo)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
+    if (mascara[y * w + x] && !(dentro(x - 1, y) && dentro(x + 1, y) && dentro(x, y - 1) && dentro(x, y + 1))) borde[y * w + x] = 1;
+  regionClave = clave;
+  regionCache = { x: x0, y: y0, w, h, mascara, borde, n };
+  return regionCache;
+}
+
+function mediana(gris) {
+  const h = new Uint32Array(256);
+  for (const v of gris) h[v]++;
+  let acc = 0;
+  for (let i = 0; i < 256; i++) { acc += h[i]; if (acc >= gris.length / 2) return i; }
+  return 128;
+}
+
+// Fotograma completo (RGB + gris)
+let grisAnterior = null;
+function leerFotograma() {
+  actx.drawImage(video, 0, 0, AW, AH);
+  const d = actx.getImageData(0, 0, AW, AH).data;
+  const n = AW * AH;
+  const rgb = new Uint8Array(n * 3), gris = new Uint8Array(n);
+  for (let i = 0, j = 0; j < n; i += 4, j++) {
+    rgb[j * 3] = d[i]; rgb[j * 3 + 1] = d[i + 1]; rgb[j * 3 + 2] = d[i + 2];
+    gris[j] = (d[i] * 3 + d[i + 1] * 6 + d[i + 2]) / 10;
+  }
+  const anterior = grisAnterior;
+  grisAnterior = gris;
+  return { rgb, gris, anterior };
+}
+
+// Cuánto se mueve dentro de un rectángulo
+function movimiento(f, r) {
+  if (!f.anterior) return 0;
+  const n = r.n, a = new Uint8Array(n), b = new Uint8Array(n);
+  for (let y = 0, k = 0, q = 0; y < r.h; y++) for (let x = 0; x < r.w; x++, q++) {
+    if (r.mascara && !r.mascara[q]) continue;
+    const j = (r.y + y) * AW + r.x + x;
+    a[k] = f.gris[j]; b[k] = f.anterior[j]; k++;
+  }
+  // Si la cámara ajusta sola el brillo, toda la imagen cambia a la vez: eso no es movimiento
+  const g = Math.min(1.5, Math.max(0.67, mediana(a) / Math.max(1, mediana(b))));
+  let cambian = 0;
+  for (let k = 0; k < n; k++) if (Math.abs(a[k] - b[k] * g) > PIXEL_CAMBIA) cambian++;
+  return cambian / n;
+}
+
+// Manchas: grupos de píxeles del rectángulo que no son la imagen vacía
+function manchas(f, r) {
+  if (!vaciaRGB) return null;
+  const n = r.w * r.h;
+  // Compensar si la cámara ha subido o bajado el brillo (mirando solo dentro del contorno)
+  const gAhora = new Uint8Array(r.n), gVacia = new Uint8Array(r.n);
+  for (let y = 0, k = 0, q = 0; y < r.h; y++) for (let x = 0; x < r.w; x++, q++) {
+    if (r.mascara && !r.mascara[q]) continue;
+    const j = (r.y + y) * AW + r.x + x;
+    gAhora[k] = f.gris[j];
+    gVacia[k] = (vaciaRGB[j * 3] * 3 + vaciaRGB[j * 3 + 1] * 6 + vaciaRGB[j * 3 + 2]) / 10;
+    k++;
+  }
+  const ganancia = Math.min(1.35, Math.max(0.75, mediana(gVacia) / Math.max(1, mediana(gAhora))));
+  const fondo = new Uint8Array(n);
+  for (let y = 0, k = 0; y < r.h; y++) for (let x = 0; x < r.w; x++, k++) {
+    if (r.mascara && !r.mascara[k]) continue;   // fuera del contorno: no existe
+    const j = ((r.y + y) * AW + r.x + x) * 3;
+    const cr = f.rgb[j] * ganancia, cg = f.rgb[j + 1] * ganancia, cb = f.rgb[j + 2] * ganancia;
+    const vr = vaciaRGB[j], vg = vaciaRGB[j + 1], vb = vaciaRGB[j + 2];
+    const dif = Math.max(Math.abs(cr - vr), Math.abs(cg - vg), Math.abs(cb - vb));
+    if (dif <= DIFERENCIA_FONDO) continue;
+    // ¿Es una sombra o un cambio de luz? Mismo color que la mesa, solo más oscuro o más claro.
+    const sc = cr + cg + cb + 1, sv = vr + vg + vb + 1;
+    const brillo = sc / sv;
+    const cambioColor = Math.max(Math.abs(cr / sc - vr / sv), Math.abs(cg / sc - vg / sv), Math.abs(cb / sc - vb / sv));
+    const esSombraOLuz = cambioColor < CAMBIO_COLOR_MIN && brillo > 0.45 && brillo < 1.6;
+    if (!esSombraOLuz) fondo[k] = 1;
+  }
+  const etiqueta = new Int32Array(n), pila = new Int32Array(n);
+  const lista = [];
+  let id = 0;
+  for (let s = 0; s < n; s++) {
+    if (!fondo[s] || etiqueta[s]) continue;
+    id++;
+    const m = { area: 0, borde: false, mezcla: new Array(NCAJONES).fill(0), x0: r.w, y0: r.h, x1: 0, y1: 0 };
+    let top = 0; pila[top++] = s; etiqueta[s] = id;
+    while (top) {
+      const p = pila[--top];
+      const x = p % r.w, y = (p - x) / r.w;
+      const j = ((r.y + y) * AW + r.x + x) * 3;
+      m.area++;
+      m.mezcla[cajonDe(Math.min(255, f.rgb[j] * ganancia), Math.min(255, f.rgb[j + 1] * ganancia), Math.min(255, f.rgb[j + 2] * ganancia))]++;
+      if (r.borde ? r.borde[p] : (x === 0 || y === 0 || x === r.w - 1 || y === r.h - 1)) m.borde = true;
+      if (x < m.x0) m.x0 = x; if (x > m.x1) m.x1 = x; if (y < m.y0) m.y0 = y; if (y > m.y1) m.y1 = y;
+      if (x > 0 && fondo[p - 1] && !etiqueta[p - 1]) { etiqueta[p - 1] = id; pila[top++] = p - 1; }
+      if (x < r.w - 1 && fondo[p + 1] && !etiqueta[p + 1]) { etiqueta[p + 1] = id; pila[top++] = p + 1; }
+      if (y > 0 && fondo[p - r.w] && !etiqueta[p - r.w]) { etiqueta[p - r.w] = id; pila[top++] = p - r.w; }
+      if (y < r.h - 1 && fondo[p + r.w] && !etiqueta[p + r.w]) { etiqueta[p + r.w] = id; pila[top++] = p + r.w; }
+    }
+    if (m.area >= 8) {
+      m.mezcla = m.mezcla.map(c => c / m.area);
+      lista.push(m);
+    }
+  }
+  return lista.sort((a, b) => b.area - a.area);
+}
+
+const distancia = (a, b) => { const x = suavizar(a), y = suavizar(b); return x.reduce((s, v, k) => s + Math.abs(v - y[k]), 0); };
+
+// Decidir qué es cada mancha: brazo u objetos
+function analizar(f, r) {
+  const lista = manchas(f, r);
+  if (!lista) return null;
+  const perf = estado.perfiles;
+  const aprendidos = IDS.filter(o => perf[o]);
+  const areaMax = Math.max(...aprendidos.map(o => perf[o].area));
+  const areaMin = Math.min(...aprendidos.map(o => perf[o].area));
+  const puntos = Object.fromEntries(IDS.map(o => [o, perf[o] ? 0 : null]));
+  const tolerantes = Object.fromEntries(aprendidos.map(o => [o, conVecinos(perf[o].principales)]));
+  const relevantes = conVecinos([...aprendidos.flatMap(o => perf[o].principales), ...(perf.brazo?.principales || [])]);
+  // Colores propios del brazo: sus tonos aprendidos (sin negros ni grises, que comparten sombras y el brick).
+  // Si no se ha enseñado, el naranja-amarillo del robot.
+  const tonosBrazo = (perf.brazo?.principales || []).filter(k => k >= 4);
+  const coloresBrazo = conVecinos(tonosBrazo.length ? tonosBrazo : [4, 5, 6, 7, 8]);
+  let brazo = false;
+  for (const m of lista) {
+    if (m.area < areaMin * 0.25) { m.tipo = "ruido"; continue; }
+    // Manchas sin los colores de ningún objeto ni del brazo (la mesa que queda al apartarse el brazo, reflejos): se ignoran
+    if (m.mezcla.reduce((s, v, k) => s + (relevantes.has(k) ? v : 0), 0) < 0.15) { m.tipo = "ruido"; continue; }
+    // ¿Se parece más al brazo aprendido que a cualquier objeto?
+    const pareceBrazo = !!perf.brazo &&
+      distancia(m.mezcla, perf.brazo.mezcla) < Math.min(...aprendidos.map(o => distancia(m.mezcla, perf[o].mezcla)));
+    // Es el brazo si: es mucho más grande que cualquier objeto; o entra por el borde y es grande o parece el brazo;
+    // o parece el brazo y es claramente más grande que un objeto. Una mandarina sola nunca cumple nada de esto.
+    // Y siempre tiene que llevar los colores del brazo (su naranja): una sombra o un reflejo nunca es el brazo
+    let colorBrazo = 0;
+    for (const k of coloresBrazo) colorBrazo += m.mezcla[k];
+    const esBrazo = colorBrazo >= 0.3 && (
+      m.area > areaMax * 2.5
+      || (m.borde && (m.area > areaMax * 0.7 || pareceBrazo))
+      || (pareceBrazo && m.area > areaMax * 1.5));
+    if (esBrazo) { m.tipo = "brazo"; brazo = true; continue; }
+    // 3) Si no es brazo, reparte la mancha entre los objetos según sus colores
+    let mejor = null, mejorV = 0;
+    for (const o of aprendidos) {
+      let parte = 0;
+      for (const k of tolerantes[o]) parte += m.mezcla[k];
+      const v = parte * m.area / perf[o].area;
+      puntos[o] += v;
+      if (v > mejorV) { mejorV = v; mejor = o; }
+    }
+    m.tipo = mejorV >= 0.25 ? mejor : "ruido";   // manchas que no se parecen a nada (sombras, la mesa al apartarse el brazo)
+  }
+  return { lista, puntos, brazo, rect: r };
+}
+
+// ---------------------------------------------------------------
+// Contar: un objeto cuenta como reciclado cuando SALE de la zona.
+// Con el brazo dentro o algo moviéndose no se decide nada.
+// ---------------------------------------------------------------
+const confirmados = {};
+const vistos = Object.fromEntries(IDS.map(o => [o, 0]));
+const noVistos = Object.fromEntries(IDS.map(o => [o, 0]));
+
+function decidir(puntos, bloqueado) {
+  const presente = {};
+  const salidos = [];
+  for (const o of IDS) {
+    const v = puntos[o];
+    if (v == null) continue;
+    presente[o] = v >= estado.umbral;
+    const claramenteNo = v < estado.umbral * 0.5;
+    if (bloqueado) continue;   // en pausa: no suma ni borra lo que llevaba
+    if (presente[o]) { vistos[o]++; noVistos[o] = 0; }
+    else if (claramenteNo) { noVistos[o]++; vistos[o] = 0; }
+    if (!confirmados[o] && vistos[o] >= FOTOGRAMAS_APARECE) confirmados[o] = true;
+    if (confirmados[o] && noVistos[o] >= FOTOGRAMAS_SALE) { confirmados[o] = false; salidos.push(o); }
+  }
+  return { presente, salidos };
+}
+
+function reiniciarDecision() {
+  for (const o of IDS) { confirmados[o] = false; vistos[o] = 0; noVistos[o] = 0; }
+}
+
+function registrar(objeto) {
+  const ahora = new Date();
+  estado.historial.push({ objeto, hora: ahora.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }), t: ahora.getTime() });
+  guardar();
+  aviso = { objeto, hasta: Date.now() + SEGUNDOS_AVISO * 1000 };
+  pintarContadores(objeto);
+  if (estado.sonido) pitido(objeto);
+}
+
+// ---------------------------------------------------------------
+// Enseñar
+// ---------------------------------------------------------------
+let ensenando = null;
+
+document.querySelectorAll("[data-clase]").forEach(boton => boton.addEventListener("click", () => {
+  if (!camaraActiva) { $("avisoCamara").hidden = false; $("avisoCamara").textContent = "Activa primero la cámara"; return; }
+  if (ensenando) return;
+  const clase = boton.dataset.clase;
+  if (clase !== "vacia" && !vaciaRGB) { $("n-" + clase).textContent = "enseña antes la zona vacía"; return; }
+  ensenando = { clase, quedan: FOTOS_POR_CLIC, boton, fotos: [] };
+  desbloquearAudio();
+}));
+
+function terminarEnsenanza() {
+  const { clase, fotos, boton } = ensenando;
+  ensenando = null;
+  boton.querySelector(".barra").style.width = "0";
+  if (clase === "vacia") {
+    // Imagen completa media: es la referencia con la que se compara todo
+    const suma = new Float32Array(AW * AH * 3);
+    for (const f of fotos) for (let i = 0; i < suma.length; i++) suma[i] += f.rgb[i];
+    vaciaRGB = new Uint8Array(suma.length);
+    for (let i = 0; i < suma.length; i++) vaciaRGB[i] = Math.round(suma[i] / fotos.length);
+    estado.vacia = { w: AW, h: AH, rgb: aBase64(vaciaRGB) };
+    reiniciarDecision();
+  } else {
+    // Mancha más grande de cada foto dentro de la zona = el objeto (o el brazo)
+    const r = regionZona();
+    const grandes = fotos.map(f => manchas(f, r)?.[0]).filter(Boolean);
+    if (grandes.length < fotos.length / 2) {
+      boton.classList.add("error");
+      $("n-" + clase).textContent = "no veo nada nuevo en la zona";
+      return;
+    }
+    const area = grandes.reduce((s, m) => s + m.area, 0) / grandes.length;
+    const mezcla = new Array(NCAJONES).fill(0);
+    for (const m of grandes) m.mezcla.forEach((v, k) => mezcla[k] += v / grandes.length);
+    const ant = estado.perfiles[clase];
+    const p = ant
+      ? { area: (ant.area * ant.veces + area) / (ant.veces + 1), mezcla: ant.mezcla.map((v, k) => (v * ant.veces + mezcla[k]) / (ant.veces + 1)), veces: ant.veces + 1 }
+      : { area, mezcla, veces: 1 };
+    p.principales = p.mezcla.map((v, k) => [v, k]).filter(([v]) => v > 0.08).map(([, k]) => k);
+    estado.perfiles[clase] = p;
+  }
+  guardar(); pintarAprendido(); pintarEstado();
+}
+
+// ---------------------------------------------------------------
+// Bucle principal
+// ---------------------------------------------------------------
+let etiquetas = null;   // lo que se dibuja encima de la cámara
+setInterval(() => {
+  if (!camaraActiva || video.readyState < 2) return;
+  const f = leerFotograma();
+  const zona = regionZona();
+
+  if (ensenando) {
+    ensenando.fotos.push(f);
+    ensenando.quedan--;
+    ensenando.boton.querySelector(".barra").style.width = (100 * (FOTOS_POR_CLIC - ensenando.quedan) / FOTOS_POR_CLIC) + "%";
+    if (ensenando.quedan <= 0) terminarEnsenanza();
+    pintarMedidor({ movimiento: movimiento(f, zona) });
+    return;
+  }
+  if (!listo()) { etiquetas = null; pintarZona(); pintarMedidor({ movimiento: movimiento(f, zona) }); return; }
+
+  // El conteo usa la zona de recogida, salvo que en modo contador se elija "toda la imagen"
+  const contarTodo = estado.contador && estado.contarEn === "todo";
+  const a = analizar(f, contarTodo ? IMAGEN : zona);
+  if (!a) return;
+  etiquetas = estado.contador ? null : a;   // en modo contador, imagen limpia
+  const mov = movimiento(f, contarTodo ? IMAGEN : zona);
+  const bloqueado = mov > MOVIMIENTO_MAX || a.brazo;
+  const { presente, salidos } = decidir(a.puntos, bloqueado);
+  salidos.forEach(registrar);
+  const info = { puntos: a.puntos, presente, brazo: a.brazo, movimiento: mov, bloqueado };
+  pintarZona(info);
+  pintarMedidor(info);
+}, 1000 / FPS);
+
+// ---------------------------------------------------------------
+// Vista previa: imagen, zona (solo al enseñar) y lo que cree que es cada mancha
+// ---------------------------------------------------------------
+const vista = $("vista"), vctx = vista.getContext("2d");
+let trazo = null;   // contorno que se está dibujando
+
+function dibujarVista() {
+  if (camaraActiva && video.readyState >= 2) {
+    vctx.drawImage(video, 0, 0, vista.width, vista.height);
+    if (!estado.contador) {
+      const W = vista.width, H = vista.height;
+      const pts = (trazo || estado.zona.puntos).map(([px, py]) => [px * W, py * H]);
+      const camino = () => { vctx.beginPath(); pts.forEach(([px, py], i) => i ? vctx.lineTo(px, py) : vctx.moveTo(px, py)); };
+      if (!trazo) {
+        // Oscurecer lo que queda fuera de la zona
+        vctx.fillStyle = "rgba(0,0,0,0.45)";
+        vctx.beginPath(); vctx.rect(0, 0, W, H);
+        pts.forEach(([px, py], i) => i ? vctx.lineTo(px, py) : vctx.moveTo(px, py));
+        vctx.closePath(); vctx.fill("evenodd");
+      }
+      vctx.strokeStyle = "#7BD88F"; vctx.lineWidth = 4; vctx.lineJoin = "round"; vctx.lineCap = "round";
+      camino(); if (!trazo) vctx.closePath(); vctx.stroke();
+      if (trazo && pts.length > 2) {   // cómo se cerrará al soltar
+        vctx.setLineDash([8, 8]); vctx.beginPath(); vctx.moveTo(...pts[pts.length - 1]); vctx.lineTo(...pts[0]); vctx.stroke(); vctx.setLineDash([]);
+      }
+      const arriba = pts.reduce((a, b) => (b[1] < a[1] ? b : a), pts[0]);
+      vctx.font = "bold 22px system-ui, sans-serif";
+      vctx.fillStyle = "#7BD88F";
+      vctx.fillText(trazo ? "Dibujando la zona…" : "Zona de recogida", Math.min(W - 230, Math.max(8, arriba[0] - 60)), Math.max(26, arriba[1] - 12));
+    }
+    if (etiquetas && !trazo) {
+      const esc = vista.width / AW, r = etiquetas.rect;
+      const k = vista.width / Math.max(1, vista.clientWidth);   // letra legible aunque la cámara se vea pequeña
+      const letra = Math.round(14 * k);
+      for (const m of etiquetas.lista) {
+        if (m.tipo === "ruido") continue;
+        const col = m.tipo === "brazo" ? "#FF6B57" : "#7BD88F";
+        const bx = (r.x + m.x0) * esc, by = (r.y + m.y0) * esc, bw = (m.x1 - m.x0 + 1) * esc, bh = (m.y1 - m.y0 + 1) * esc;
+        vctx.strokeStyle = col; vctx.lineWidth = Math.max(3, 2 * k); vctx.strokeRect(bx, by, bw, bh);
+        const txt = m.tipo === "brazo" ? "brazo" : OBJETOS[m.tipo].nombre.toLowerCase();
+        vctx.font = `bold ${letra}px system-ui, sans-serif`;
+        const ty = by + bh + letra * 1.15 < vista.height ? by + bh + letra * 1.15 : Math.max(letra, by - letra * 0.4);
+        const tw = vctx.measureText(txt).width;
+        vctx.fillStyle = "rgba(0,0,0,0.65)"; vctx.fillRect(bx, ty - letra * 0.95, tw + letra * 0.6, letra * 1.25);
+        vctx.fillStyle = col; vctx.fillText(txt, bx + letra * 0.3, ty);
+      }
+    }
+  }
+  requestAnimationFrame(dibujarVista);
+}
+requestAnimationFrame(dibujarVista);
+
+function punto(e) {
+  const r = vista.getBoundingClientRect();
+  return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+}
+vista.addEventListener("pointerdown", e => {
+  if (!camaraActiva || estado.contador) return;   // en modo contador la zona no se toca
+  vista.setPointerCapture(e.pointerId);
+  const p = punto(e);
+  trazo = [[p.x, p.y]];
+});
+vista.addEventListener("pointermove", e => {
+  if (!trazo) return;
+  const p = punto(e), u = trazo[trazo.length - 1];
+  if (Math.hypot(p.x - u[0], p.y - u[1]) > 0.006) trazo.push([p.x, p.y]);
+});
+function areaContorno(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * y2 - x2 * y1; }
+  return Math.abs(a) / 2;
+}
+function terminarTrazo() {
+  if (!trazo) return;
+  // Se cierra solo al soltar. Un clic suelto o un garabato diminuto no cambia la zona.
+  if (trazo.length >= 3 && areaContorno(trazo) > 0.004) {
+    let pts = trazo;
+    while (pts.length > 400) pts = pts.filter((_, i) => i % 2 === 0);
+    // La imagen vacía es la imagen entera, así que cambiar la zona no borra lo aprendido
+    estado.zona = { puntos: pts.map(([x, y]) => [+x.toFixed(4), +y.toFixed(4)]) };
+    reiniciarDecision(); guardar();
+  }
+  trazo = null;
+}
+vista.addEventListener("pointerup", terminarTrazo);
+vista.addEventListener("pointercancel", () => { trazo = null; });
+
+// ---------------------------------------------------------------
+// Sonido
+// ---------------------------------------------------------------
+let audio = null;
+function desbloquearAudio() {
+  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch { audio = null; }
+}
+function pitido(objeto) {
+  if (!audio) return;
+  const notas = { mandarina: [523, 659], papel: [587, 784], brick: [659, 880] }[objeto] || [600, 800];
+  notas.forEach((f, i) => {
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = f; o.type = "triangle";
+    g.gain.setValueAtTime(0.0001, audio.currentTime + i * 0.12);
+    g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + i * 0.12 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + i * 0.12 + 0.25);
+    o.connect(g).connect(audio.destination);
+    o.start(audio.currentTime + i * 0.12); o.stop(audio.currentTime + i * 0.12 + 0.3);
+  });
+}
+$("chkSonido").checked = estado.sonido;
+$("chkSonido").addEventListener("change", e => { estado.sonido = e.target.checked; desbloquearAudio(); guardar(); });
+$("rngUmbral").addEventListener("input", e => { estado.umbral = parseFloat(e.target.value); guardar(); pintarAprendido(); });
+$("selContar").addEventListener("change", e => { estado.contarEn = e.target.value; reiniciarDecision(); guardar(); });
+
+// ---------------------------------------------------------------
+// Botones (con confirmación en el propio botón)
+// ---------------------------------------------------------------
+function conConfirmacion(boton, texto, accion) {
+  const original = boton.textContent;
+  let armado = false, t;
+  boton.addEventListener("click", () => {
+    if (!armado) {
+      armado = true; boton.textContent = texto;
+      t = setTimeout(() => { armado = false; boton.textContent = original; }, 3000);
+      return;
+    }
+    clearTimeout(t); armado = false; boton.textContent = original;
+    accion();
+  });
+}
+function olvidar() {
+  estado.vacia = null; vaciaRGB = null; estado.perfiles = {};
+  reiniciarDecision(); etiquetas = null;
+  guardar(); pintarAprendido(); pintarEstado(); pintarZona(); pintarMedidor();
+}
+function ponerACero() {
+  estado.historial = []; aviso = null; guardar(); pintarContadores(); pintarZona();
+}
+conConfirmacion($("btnCero"), "¿Seguro? Pulsa otra vez", ponerACero);
+conConfirmacion($("btnCero2"), "¿Seguro? Pulsa otra vez", ponerACero);
+conConfirmacion($("btnOlvidar"), "¿Seguro? Pulsa otra vez", olvidar);
+
+function cambiarModo(contador) {
+  // Solo se olvida lo que hay en la zona si cambia lo que se vigila (toda la imagen en vez de la zona)
+  if (estado.contarEn === "todo") reiniciarDecision();
+  estado.contador = contador; etiquetas = null;
+  guardar(); pintarModo(); pintarZona();
+}
+$("btnContador").addEventListener("click", () => { cambiarModo(true); desbloquearAudio(); });
+$("btnEnsenar").addEventListener("click", () => cambiarModo(false));
+const ICONO_AMPLIAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const ICONO_REDUCIR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+function pintarPantalla() {
+  const completa = !!document.fullscreenElement;
+  $("btnPantalla").innerHTML = completa ? ICONO_REDUCIR + "<span>Salir de pantalla completa</span>" : ICONO_AMPLIAR + "<span>Pantalla completa</span>";
+}
+document.addEventListener("fullscreenchange", pintarPantalla);
+pintarPantalla();
+$("btnPantalla").addEventListener("click", async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch { /* sin pantalla completa: F11 */ }
+});
+
+// Arranque
+pintarModo(); pintarContadores(); pintarAprendido(); pintarEstado(); pintarZona(); pintarMedidor();
+</script>
+</body>
+</html>
